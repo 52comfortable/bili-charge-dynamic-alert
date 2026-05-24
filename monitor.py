@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
 """
-B站充电专属动态监控 - GitHub Actions 版本
-固定触发 + 随机延迟，仅在新充电动态时推送
+B站充电专属动态监控 - 本地版
+每执行一次检查最新充电动态，有新的就推送并记录ID
 """
 import os
 import re
 import time
-import json
 import random
 import base64
 import hashlib
 import requests
-import subprocess
 import urllib.parse
 from datetime import datetime
 
-# ==================== 配置（从环境变量读取）====================
-UP_MID = "11473291"                    # 要监控的UP主MID
-SESSDATA = os.environ.get("SESSDATA", "")
-BILI_JCT = os.environ.get("BILI_JCT", "")
-BUVID3 = os.environ.get("BUVID3", "")
-SCKEY = os.environ.get("SCKEY", "")    # 留空则不推送
-# =============================================================
+# ==================== 配置 ====================
+UP_MID = ""                     # 要监控的UP主MID
+SESSDATA = os.environ.get("SESSDATA", "") #Cookie中的SESSDATA
+BILI_JCT = os.environ.get("BILI_JCT", "") #Cookie中的bili_jct
+BUVID3 = os.environ.get("BUVID3", "") #Cookie中的buvid3
+SCKEY = os.environ.get("SCKEY", "")     # 留空则不推送
+# =============================================
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -115,11 +113,14 @@ def create_session():
         session.cookies.set("buvid3", BUVID3, domain=".bilibili.com")
     session.headers.update(HEADERS)
 
-    # 预热请求，不打印响应
-    session.get("https://www.bilibili.com/", timeout=10)
-    time.sleep(random.uniform(2, 5))
-    session.get(f"https://space.bilibili.com/{UP_MID}/dynamic", timeout=10)
-    time.sleep(random.uniform(1, 3))
+    # 预热请求（可选，减少首次风控概率）
+    try:
+        session.get("https://www.bilibili.com/", timeout=10)
+        time.sleep(random.uniform(2, 5))
+        session.get(f"https://space.bilibili.com/{UP_MID}/dynamic", timeout=10)
+        time.sleep(random.uniform(1, 3))
+    except:
+        pass
     return session
 
 
@@ -135,6 +136,7 @@ def fetch_dynamics(session):
         "dm_cover_img_str": random_base64_str(32, 128),
         "dm_img_inter": '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}',
         "x-bili-device-req-json": '{"platform":"web","device":"pc","spmid":"333.1387"}',
+        "features": "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote,forwardListHidden,decorationCard,commentsNewVersion,onlyfansAssetsV2,ugcDelete,onlyfansQaCard,avatarAutoTheme,sunflowerStyle,cardsEnhance,eva3CardOpus,eva3CardVideo,eva3CardComment,eva3CardUser"
     }
     signed_params = wbi.enc_wbi(base_params)
     url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
@@ -175,20 +177,51 @@ def extract_content(item):
         return "".join(n.get("text", "") for n in nodes)
     return ""
 
+def extract_all_image_urls(item):
+    """提取动态中所有图片的URL"""
+    major = item.get("modules", {}).get("module_dynamic", {}).get("major", {})
+    t = major.get("type")
+    urls = []
+
+    if t == "MAJOR_TYPE_OPUS":
+        pics = major.get("opus", {}).get("pics", [])
+        for pic in pics:
+            if pic.get("url"):
+                urls.append(pic["url"])
+
+    elif t == "MAJOR_TYPE_DRAW":
+        items = major.get("draw", {}).get("items", [])
+        for img in items:
+            if img.get("src"):
+                urls.append(img["src"])
+
+    elif t == "MAJOR_TYPE_ARCHIVE":
+        cover = major.get("archive", {}).get("cover")
+        if cover:
+            urls.append(cover)
+
+    return urls
+
 
 def push_to_wechat(title, content):
+    """通过 Server酱 推送消息，返回是否成功"""
     if not SCKEY:
-        return
+        print("未配置 SCKEY，跳过推送")
+        return False
+
     url = f"https://sctapi.ftqq.com/{SCKEY}.send"
     data = {"title": title, "desp": content}
     try:
         r = requests.post(url, data=data, timeout=10)
         if r.status_code == 200 and r.json().get("code") == 0:
             print("微信推送成功")
+            return True
         else:
             print(f"微信推送失败: {r.text}")
+            return False
     except Exception as e:
         print(f"微信推送异常: {e}")
+        return False
 
 
 def read_last_id():
@@ -204,29 +237,7 @@ def write_last_id(dyn_id):
         f.write(dyn_id)
 
 
-def git_commit_and_push():
-    """将 last_dyn_id.txt 提交并推送到仓库"""
-    try:
-        subprocess.run(["git", "config", "user.name", "github-actions"], check=True)
-        subprocess.run(["git", "config", "user.email", "github-actions@github.com"], check=True)
-        subprocess.run(["git", "add", LAST_ID_FILE], check=True)
-        result = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
-        if LAST_ID_FILE in result.stdout:
-            subprocess.run(["git", "commit", "-m", "update last_dyn_id"], check=True)
-            subprocess.run(["git", "push"], check=True)
-            print("last_dyn_id.txt 已更新并推送")
-        else:
-            print("无文件变更，跳过提交")
-    except Exception as e:
-        print(f"git 操作失败: {e}")
-
-
 def main():
-    # 随机延迟 1~5 分钟，避免定时太过机械
-    delay = random.randint(60, 300)
-    print(f"随机等待 {delay} 秒...")
-    time.sleep(delay)
-
     print(f"[{datetime.now()}] 开始扫描...")
     session = create_session()
     items = fetch_dynamics(session)
@@ -254,18 +265,32 @@ def main():
     # 构造推送内容
     author = latest.get("modules", {}).get("module_author", {})
     content = extract_content(latest)
-    msg = f"""⚡ 充电专属动态
-UP主：{author.get('name', '未知')}
-时间：{author.get('pub_time', '未知')}
-内容：{content[:200]}
-链接：https://t.bilibili.com/{dyn_id}"""
+    img_urls = extract_all_image_urls(latest)
 
-    push_to_wechat("B站充电动态提醒", msg)
+    # 使用 Markdown 双回车换行（\n\n）
+    msg = (
+        f"⚡ 充电专属动态\n\n"
+        f"UP主：{author.get('name', '未知')}\n\n"
+        f"时间：{author.get('pub_time', '未知')}\n\n"
+        f"内容：{content}\n\n"
+    )
 
-    # 记录并推送
+    if img_urls:
+        for idx, url in enumerate(img_urls, 1):
+            msg += f"![图{idx}]({url})\n\n"
+
+    msg += f"链接：https://t.bilibili.com/{dyn_id}"
+    
+    # 推送，只有成功才记录ID
+    if push_to_wechat("B站充电动态提醒", msg):
+        write_last_id(dyn_id)
+        print(f"新动态 {dyn_id} 已推送并记录")
+    else:
+        print(f"推送失败，动态 {dyn_id} 未记录，下次会重试")
+
+    # 记录本次推送ID
     write_last_id(dyn_id)
-    git_commit_and_push()
-    print(f"新动态 {dyn_id} 已处理")
+    print(f"新动态 {dyn_id} 已处理，已记录到 {LAST_ID_FILE}")
 
 
 if __name__ == "__main__":
