@@ -28,10 +28,10 @@ jobs:
           TEST_SESS: ${{ secrets.SESSDATA }}
         run: echo "SESSDATA length = ${#TEST_SESS}"
 
-      - name: 运行监控脚本
-        env:
-          SESSDATA: ${{ secrets.SESSDATA }}
-          BILI_JCT: ${{ secrets.BILI_JCT }}
-          BUVID3: ${{ secrets.BUVID3 }}
-          SCKEY: ${{ secrets.SCKEY }}
-        run: python monitor.py
+      # - name: 运行监控脚本
+      #   env:
+      #     SESSDATA: ${{ secrets.SESSDATA }}
+      #     BILI_JCT: ${{ secrets.BILI_JCT }}
+      #     BUVID3: ${{ secrets.BUVID3 }}
+      #     SCKEY: ${{ secrets.SCKEY }}
+      #   run: python monitor.py
