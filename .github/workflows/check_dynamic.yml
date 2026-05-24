@@ -9,6 +9,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    environment: bilibili-secret
     permissions:
       contents: write   # 允许推送 last_dyn_id.txt 到仓库
     steps:
@@ -23,15 +24,10 @@ jobs:
       - name: 安装依赖
         run: pip install requests
         
-      - name: 检查 Secrets
+      - name: 运行监控脚本
         env:
-          TEST_SESS: ${{ secrets.SESSDATA }}
-        run: echo "SESSDATA length = ${#TEST_SESS}"
-
-      # - name: 运行监控脚本
-      #   env:
-      #     SESSDATA: ${{ secrets.SESSDATA }}
-      #     BILI_JCT: ${{ secrets.BILI_JCT }}
-      #     BUVID3: ${{ secrets.BUVID3 }}
-      #     SCKEY: ${{ secrets.SCKEY }}
-      #   run: python monitor.py
+          SESSDATA: ${{ secrets.SESSDATA }}
+          BILI_JCT: ${{ secrets.BILI_JCT }}
+          BUVID3: ${{ secrets.BUVID3 }}
+          SCKEY: ${{ secrets.SCKEY }}
+        run: python monitor.py
