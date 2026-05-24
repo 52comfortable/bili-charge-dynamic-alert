@@ -1,6 +1,6 @@
 import time
 import random
-from monitor import main   # 假设你的监控主函数在 monitor.py 中
+from monitor import main
 
 while True:
     delay = random.randint(60, 300)   # 1~5分钟
