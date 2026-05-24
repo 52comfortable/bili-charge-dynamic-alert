@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 B站充电专属动态监控 - GitHub Actions 版本
-有新充电专属动态时推送，并自动更新已推送ID
+固定触发 + 随机延迟，仅在新充电动态时推送
 """
 import os
 import re
@@ -210,7 +210,6 @@ def git_commit_and_push():
         subprocess.run(["git", "config", "user.name", "github-actions"], check=True)
         subprocess.run(["git", "config", "user.email", "github-actions@github.com"], check=True)
         subprocess.run(["git", "add", LAST_ID_FILE], check=True)
-        # 检查是否有变更，如果没有则跳过提交
         result = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
         if LAST_ID_FILE in result.stdout:
             subprocess.run(["git", "commit", "-m", "update last_dyn_id"], check=True)
@@ -223,6 +222,11 @@ def git_commit_and_push():
 
 
 def main():
+    # 随机延迟 1~5 分钟，避免定时太过机械
+    delay = random.randint(60, 300)
+    print(f"随机等待 {delay} 秒...")
+    time.sleep(delay)
+
     print(f"[{datetime.now()}] 开始扫描...")
     session = create_session()
     items = fetch_dynamics(session)
