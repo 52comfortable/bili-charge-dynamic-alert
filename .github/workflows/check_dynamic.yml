@@ -22,6 +22,11 @@ jobs:
 
       - name: 安装依赖
         run: pip install requests
+        
+      - name: 检查 Secrets
+        env:
+          TEST_SESS: ${{ secrets.SESSDATA }}
+        run: echo "SESSDATA length = ${#TEST_SESS}"
 
       - name: 运行监控脚本
         env:
