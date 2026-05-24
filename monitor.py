@@ -14,11 +14,11 @@ import urllib.parse
 from datetime import datetime
 
 # ==================== 配置 ====================
-UP_MID = ""                     # 要监控的UP主MID
+UP_MID = os.environ.get("UP_MID", "")     # 要监控的UP主MID
 SESSDATA = os.environ.get("SESSDATA", "") #Cookie中的SESSDATA
 BILI_JCT = os.environ.get("BILI_JCT", "") #Cookie中的bili_jct
-BUVID3 = os.environ.get("BUVID3", "") #Cookie中的buvid3
-SCKEY = os.environ.get("SCKEY", "")     # 留空则不推送
+BUVID3 = os.environ.get("BUVID3", "")     #Cookie中的buvid3
+SCKEY = os.environ.get("SCKEY", "")       # 留空则不推送
 # =============================================
 
 HEADERS = {
