@@ -14,11 +14,11 @@ import urllib.parse
 from datetime import datetime
 
 # ==================== 配置 ====================
-UP_MID = os.environ.get("UP_MID", "")     # 要监控的UP主MID
+UP_MID = os.environ.get("UP_MID", "11473291")     # 要监控的UP主MID
 SESSDATA = os.environ.get("SESSDATA", "") #Cookie中的SESSDATA
 BILI_JCT = os.environ.get("BILI_JCT", "") #Cookie中的bili_jct
 BUVID3 = os.environ.get("BUVID3", "")     #Cookie中的buvid3
-SCKEY = os.environ.get("SCKEY", "")       # 留空则不推送
+SCKEY = os.environ.get("SCKEY", "")       # 留空则不推送，支持多个Key，用英文逗号分隔，例如 "key1,key2,key3"
 # =============================================
 
 HEADERS = {
@@ -40,6 +40,9 @@ MIXIN_KEY_ENC_TAB = [
 ]
 
 LAST_ID_FILE = "last_dyn_id.txt"
+
+# 解析多个 Server酱 Key
+SCKEY_LIST = [k.strip() for k in SCKEY.split(",") if k.strip()] if SCKEY else []
 
 
 class BiliWbi:
@@ -155,8 +158,9 @@ def is_charge_exclusive(item):
     badge = item.get("modules", {}).get("module_author", {}).get("icon_badge")
     if badge and badge.get("text") == "充电专属":
         return True
-    major = item.get("modules", {}).get("module_dynamic", {}).get("major", {})
-    if major.get("type") == "MAJOR_TYPE_BLOCKED":
+
+    major = item.get("modules", {}).get("module_dynamic", {}).get("major")
+    if major and major.get("type") == "MAJOR_TYPE_BLOCKED":
         if major.get("blocked", {}).get("blocked_type") == 3:
             return True
     return False
@@ -203,25 +207,29 @@ def extract_all_image_urls(item):
     return urls
 
 
-def push_to_wechat(title, content):
-    """通过 Server酱 推送消息，返回是否成功"""
-    if not SCKEY:
+def push_to_wechat_multi(title, content, sc_keys):
+    """
+    使用多个 Server酱 Key 推送消息
+    返回 True 表示至少有一个推送成功，False 表示全部失败
+    """
+    if not sc_keys:
         print("未配置 SCKEY，跳过推送")
         return False
 
-    url = f"https://sctapi.ftqq.com/{SCKEY}.send"
-    data = {"title": title, "desp": content}
-    try:
-        r = requests.post(url, data=data, timeout=10)
-        if r.status_code == 200 and r.json().get("code") == 0:
-            print("微信推送成功")
-            return True
-        else:
-            print(f"微信推送失败: {r.text}")
-            return False
-    except Exception as e:
-        print(f"微信推送异常: {e}")
-        return False
+    success = False
+    for idx, key in enumerate(sc_keys, 1):
+        url = f"https://sctapi.ftqq.com/{key}.send"
+        data = {"title": title, "desp": content}
+        try:
+            r = requests.post(url, data=data, timeout=10)
+            if r.status_code == 200 and r.json().get("code") == 0:
+                print(f"微信推送成功 (Key {idx}/{len(sc_keys)})")
+                success = True
+            else:
+                print(f"微信推送失败 (Key {idx}): {r.text}")
+        except Exception as e:
+            print(f"微信推送异常 (Key {idx}): {e}")
+    return success
 
 
 def read_last_id():
@@ -281,17 +289,12 @@ def main():
 
     msg += f"链接：https://t.bilibili.com/{dyn_id}"
     
-    # 推送，只有成功才记录ID
-    if push_to_wechat("B站充电动态提醒", msg):
+    # 推送（支持多个 Key）
+    if push_to_wechat_multi("B站充电动态提醒", msg, SCKEY_LIST):
         write_last_id(dyn_id)
         print(f"新动态 {dyn_id} 已推送并记录")
     else:
-        print(f"推送失败，动态 {dyn_id} 未记录，下次会重试")
-
-    # 记录本次推送ID
-    write_last_id(dyn_id)
-    print(f"新动态 {dyn_id} 已处理，已记录到 {LAST_ID_FILE}")
-
+        print(f"推送失败（所有 Key 均失败），动态 {dyn_id} 未记录，下次会重试")
 
 if __name__ == "__main__":
     main()
